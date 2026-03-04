@@ -50,8 +50,8 @@ For each teammate, provide:
 
 You have access to internal tools for Agent Teams (`TeamCreate`, `TaskCreate`, `Task`, `taskUpdate`, `sendMessage`).
 
-1. **State Machine**: When defining tasks via `TaskCreate`, enforce a strict state machine: `pending` → `ready` → `claimed` → `in_progress` → `complete`.
-2. **Dependencies**: Only mark tasks as `ready` once all prerequisite tasks are explicitly `complete`. If a sub-agent claims a `pending` task before blockers are resolved, instruct them to wait.
+1. **Parallel Execution via Worktrees**: The core philosophy of Agent Teams is massive parallelization. Tasks should ONLY be blocked (marked `pending`) if they explicitly require research findings or file output from a preceding stage. Any task that can run independently (like scanning, data analysis, or bug fixing) should be marked `ready` immediately and executed concurrently in its own isolated `git worktree`.
+2. **Task Dependencies**: When sequential execution is required, task execution should follow a clear state machine (`pending` → `ready` → `claimed` → `in_progress` → `complete`). It is critical that tasks are only marked as `ready` when blockers are resolved to prevent teammates from claiming work prematurely.
 3. **Tool Approvals (CRITICAL)**: Teammates may send you messages requesting permission to execute certain tools (e.g., executing `mcp__serena__find_symbol` or Bash commands). You must actively monitor your inbox for these requests and **immediately reply with approval** using `sendMessage` so they do not hang indefinitely!
 4. **Monitoring**: Track teammate heartbeats. If a teammate is stuck, proactively ask for a status update.
 5. **Shutdown**: When all tasks are complete, send a `shutdown_request` to all teammates and wait for their `shutdown_response` before marking the overall session complete.
