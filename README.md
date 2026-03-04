@@ -18,6 +18,7 @@ Agent Teams use a new, intricate internal lifecycle:
 ## Setup Instructions
 
 1. Install `psmux` on your Windows system (`$env:LOCALAPPDATA\psmux\psmux.exe`).
-2. Copy `env.cmd` and `env.py` to `C:\tmp\` (or adapt paths) so Claude can resolve them.
-3. Add `"teammateMode": "tmux"` to your `~/.claude/settings.json`.
-4. Run the launch workflow provided in `launch-team.md`, supplying the path to `example_team_prompt.txt`.
+2. Copy `env.cmd` and `env.py` to `C:\tmp\` (or adapt paths) so Claude can resolve them natively.
+3. Copy the `agents/team-lead.md` and `agents/windows-teammate.md` files into your global `~/.claude/agents/` directory. These custom prompt templates enforce the explicit state machine and permission bypass rules required to run autonomously.
+4. Add `"teammateMode": "tmux"` to your `~/.claude/settings.json`.
+5. Run the launch workflow provided in `launch-team.md`, supplying the path to `example_team_prompt.txt`.
