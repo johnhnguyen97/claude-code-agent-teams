@@ -16,11 +16,5 @@ This workflow launches a multi-agent Claude Team inside a native `psmux` window 
 2. Launch the team in a new terminal window:
 
 ```powershell
-$promptPath = Read-Host "Enter the absolute path to your prompt file (e.g. C:\tmp\example_team_prompt.txt)"
-$scriptPath = Join-Path $PWD "run_in_psmux.ps1"
-$psmuxPath = Join-Path $env:LOCALAPPDATA "psmux\psmux.exe"
-& $psmuxPath kill-server -a -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
-$wtArgs = @("-d", "$PWD", "$psmuxPath", "new-session", "-s", "default", "pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "$scriptPath", "$promptPath")
-Start-Process wt.exe -ArgumentList $wtArgs
+$promptPath = Read-Host "Enter the absolute path to your prompt file (e.g. C:\tmp\example_team_prompt.txt)"; $scriptPath = Join-Path $PWD "run_in_psmux.ps1"; $wtArgs = @("-d", "$PWD", "$env:LOCALAPPDATA\psmux\psmux.exe", "kill-server", "-a"); Start-Process wt.exe -ArgumentList $wtArgs; Start-Sleep -Seconds 1; $wtArgs2 = @("-d", "$PWD", "$env:LOCALAPPDATA\psmux\psmux.exe", "new-session", "-s", "default", "pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "$scriptPath", "$promptPath"); Start-Process wt.exe -ArgumentList $wtArgs2
 ```
