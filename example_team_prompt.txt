@@ -1,31 +1,127 @@
-Create an agent team with 3 teammates to fix testing failures in parallel:
+Create an agent team with 5 teammates for VD154 APRISO MDF recovery + disk space management:
 
-  Teammate 1 — Frontend Fixer:
-    Own files: src/components/
-    Settings: isolation: worktree
+CONTEXT:
+We are recovering the FlexNet_APRISO MDF database from a reconstructed S2D virtual disk image (VD154).
+The image was built from SPACEDB metadata and contains GAGEpack + FlexNet_APRISO + SpecWare databases.
+We need to: move the image to D:, fix hardcoded paths in the codebase, scan for MDF files, fix a
+progress bar bug, and research the filesystem inside the image.
+
+DRIVE LAYOUT:
+- C: = OS drive (running low on space)
+- D: = Brand new empty secondary drive (use for ALL new output data)
+- E: = Current drive with S2D recovery data (was previously D:)
+  - E:\S2D-Recovery\ has all the VHDX files and reconstructed images
+  - E:\S2D-Recovery\reconstructed\VD154_SQL_Production_v2.img is the VD154 image (~180 GB)
+
+=== TASK PLAN (with complexity ratings) ===
+
+  Tag: disk-ops | Teammate 1 — disk-mover
+    Agent: disk-ops (haiku — simple file operations)
+    Complexity: 3/10 (straightforward file ops)
     Tasks:
-    1. Run tests across the components folder
-    2. Identify and fix failing tests
+    1. Check current disk usage on C:, D:, and E: drives.
+    2. Create folder structure on D: drive:
+       - D:\S2D-Recovery\
+       - D:\S2D-Recovery\reconstructed\
+       - D:\S2D-Recovery\extracted\
+    3. Move VD154_SQL_Production_v2.img from E:\S2D-Recovery\reconstructed\ to D:\S2D-Recovery\reconstructed\
+       Use robocopy with /MOV flag for large file. Verify size matches before confirming.
+    4. Move any large temp files from C:\tmp\ related to VD154/extracted to D:\S2D-Recovery\extracted\
+    5. Report final disk usage on all 3 drives and confirmed paths when done.
+    Contract OUT -> mdf-scanner: "CONTRACT: VD154 image is at D:\S2D-Recovery\reconstructed\VD154_SQL_Production_v2.img. Size: <N> bytes. Status: ok."
+    Contract OUT -> refs-research: Same message as above.
+    IMPORTANT: Use robocopy for large files. Verify files exist at destination before deleting source.
 
-  Teammate 2 — Backend Fixer:
-    Own files: src/api/
-    Settings: isolation: worktree
+  Tag: path-fixer | Teammate 2 — path-fixer
+    Agent: path-fixer (sonnet — needs code comprehension)
+    Complexity: 5/10 (multi-file search/replace with semantic awareness)
     Tasks:
-    1. Run tests across the API folder
-    2. Identify and fix failing tests
+    1. Search the ENTIRE codebase for hardcoded "D:\S2D-Recovery" or "D:\\S2D-Recovery" references.
+       Check: CLAUDE.md, .rs files, .py scripts, .sql files, .toml files, .json files, .txt files, .md files.
+    2. Replace ALL occurrences of "D:\S2D-Recovery" with "E:\S2D-Recovery" (since E: is where the original data lives).
+       BUT for any NEW output paths (extracted MDF, clean images), use "D:\S2D-Recovery" since D: is the new data drive.
+    3. Specifically update these key locations:
+       - CLAUDE.md: all D:\S2D-Recovery references in docs/examples
+       - core/src/bin/spacedb_explorer.rs: any hardcoded paths
+       - core/src/bin/apriso_audit_parallel.rs: any hardcoded paths
+       - scripts/**/*.py: any hardcoded paths
+       - .env or config files
+    4. The rule is: SOURCE data (VHDXs, raw drives) = E:\S2D-Recovery. OUTPUT data (extracted, reconstructed) = D:\S2D-Recovery.
+    5. Commit changes with message: "fix: update S2D paths -- source on E:, output on D:"
 
-  Teammate 3 — E2E Tester:
-    Settings: isolation: worktree
+  Tag: krok-core | Teammate 3 — mdf-scanner
+    Agent: krok-core (sonnet — Rust specialist)
+    Own files: core/src/bin/spacedb_explorer.rs
+    Complexity: 8/10 (may need new --extract-fragmented mode)
+    Contract IN <- disk-mover: "WAIT for disk-mover to send confirmed VD154 image path before starting."
     Tasks:
-    1. Wait for Teammates 1 and 2 to complete their tasks
-    2. Run the full End-to-End test suite
-    3. Log findings
+    1. WAIT for disk-mover to send the CONTRACT message with confirmed VD154 path.
+    2. Run --scan on the VD154 image (use the confirmed path):
+       core\target\x86_64-pc-windows-msvc\release\spacedb_explorer.exe --scan "<VD154_PATH>" --output "D:\S2D-Recovery\extracted"
+    3. Identify which FileHeader belongs to FlexNet_APRISO. If MDF is contiguous, extract it.
+    4. If fragmented, add an --extract-fragmented mode that scans for ALL SQL pages with the matched file_id and writes them in page_id order to reconstruct the MDF.
+    5. Optimize scan speed in spacedb_explorer.rs: increase read buffer to 256MB.
+    6. Build: cd core && PATH="/c/Users/ee61287/.cargo/bin:$PATH" PYO3_PYTHON='C:\Python312\python.exe' cargo build --release --bin spacedb_explorer
 
-Rules:
-- Give agents the correct path to the workspace.
-- Make sure to specify `isolation: worktree` so each agent gets their own git branch and avoids file conflicts!
-- Wait for all teammates to finish, then gather their results.
-- CRITICAL: When the tasks are complete, execute a cleanup command `git worktree remove` to delete the temporary teammates' worktree directories and branches!
-- CRITICAL TEAM LIFECYCLE: You MUST actively monitor your inbox. If a teammate sends you a permission request to use a tool, you MUST immediately approve it using the `sendMessage` tool so they do not hang indefinitely!
-- Use `TaskCreate` and `taskUpdate` to enforce strict state machines (pending -> ready -> claimed -> in_progress -> complete). Do not mark tasks as ready until their blockers are explicitly resolved.
-- Use `shutdown_request` and `shutdown_response` to cleanly terminate the team when finished.
+  Tag: krok-core | Teammate 4 — progress-fix
+    Agent: krok-core (sonnet — Rust specialist)
+    Own files: core/src/bin/apriso_audit_parallel.rs
+    Complexity: 4/10 (build + test, may need minor fixes)
+    Tasks:
+    1. The progress bar tracking bug in image mode has been partially fixed. Build and test:
+       cd core && PATH="/c/Users/ee61287/.cargo/bin:$PATH" PYO3_PYTHON='C:\Python312\python.exe' cargo build --release --bin apriso_audit_parallel
+       core\target\x86_64-pc-windows-msvc\release\apriso_audit_parallel.exe --image "E:\S2D-Recovery\reconstructed\VD154_SQL_Production_v2.img"
+    2. If there are still bugs, fix them. If it works, report success.
+    NOTE: Use E: drive path since image hasn't been moved yet when you start. If disk-mover moves it
+    before you finish, use the new D: path instead.
+
+  Tag: research | Teammate 5 — refs-research
+    Agent: researcher (haiku — observational, no code gen)
+    Complexity: 3/10 (mount + observe)
+    Contract IN <- disk-mover: "WAIT for disk-mover to send confirmed VD154 image path before starting."
+    Tasks:
+    1. WAIT for disk-mover to send the CONTRACT message with confirmed VD154 path.
+    2. Run spacedb_explorer.exe --strip-prefix "<VD154_PATH>" --output "D:\S2D-Recovery\reconstructed\VD154_clean.img"
+    3. Try mounting D:\S2D-Recovery\reconstructed\VD154_clean.img read-only using PowerShell Mount-DiskImage.
+    4. Log findings — what filesystem is detected (NTFS, ReFS)? Are SQL MDF files visible?
+
+=== RULES FOR TEAM LEAD (DELEGATE MODE) ===
+- Workspace: C:\Users\ee01287\Documents\Projects\Krok
+- YOU ARE THE ORCHESTRATOR ONLY — do NOT implement code or run binaries yourself.
+  Delegate ALL implementation work to teammates.
+- WORKTREE ISOLATION: All code-modifying agents (krok-core, path-fixer) have
+  `isolation: worktree` in their agent frontmatter. Claude Code creates worktrees
+  automatically when spawning these agents via the Task tool.
+  Non-code agents (disk-ops, researcher) do NOT need worktrees.
+- Build command (for teammates): cd core && PATH="/c/Users/ee61287/.cargo/bin:$PATH" PYO3_PYTHON='C:\Python312\python.exe' cargo build --release
+- EXECUTION ORDER:
+  - disk-mover, path-fixer, and progress-fix START IMMEDIATELY (independent tasks)
+  - mdf-scanner and refs-research WAIT for disk-mover's CONTRACT message
+- CRITICAL: Teammates communicate findings to each other DIRECTLY via SendMessage.
+  The lead does NOT relay messages between teammates.
+- Push to Gitea (localhost:3000), NOT GitHub.
+- SOURCE data (VHDXs, Node1/Node2 folders) stays on E:\S2D-Recovery\
+- OUTPUT data (extracted MDF, clean images, new work) goes to D:\S2D-Recovery\
+
+=== GIT WORKFLOW (ALL TEAMMATES) ===
+Git identity is set via GIT_AUTHOR_NAME/EMAIL env vars automatically. Verify with: git config user.name
+
+1. Commit frequently with conventional commits (feat:, fix:, refactor:, docs:).
+   - Stage specific files only (never git add -A)
+   - Do NOT add "Co-Authored-By" lines to commits
+   - Never commit .env files or data files >10MB
+
+2. WHEN DONE: Push your branch to Gitea:
+     git push origin <your-branch> 2>&1 || \
+       git remote set-url origin http://localhost:3000/ee01287/krok.git && \
+       git push origin <your-branch>
+   Push to GITEA (localhost:3000), NEVER GitHub.
+
+3. NOTIFY TEAM LEAD with self-report:
+   DONE: <what you accomplished>
+   BRANCH: <your-branch-name>
+   COMMITS: <count>
+   STATUS: success | partial | blocked
+   ISSUES: <any problems found>
+
+4. DO NOT merge or delete worktrees yourself. The team lead handles cleanup.
